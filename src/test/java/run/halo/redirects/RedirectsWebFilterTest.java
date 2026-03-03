@@ -44,6 +44,8 @@ class RedirectsWebFilterTest {
         assertEquals(301, exchange.getResponse().getStatusCode().value());
         assertEquals("/new-post?utm_source=test",
             exchange.getResponse().getHeaders().getFirst("Location"));
+        assertEquals("no-cache, no-store, must-revalidate",
+            exchange.getResponse().getHeaders().getFirst("Cache-Control"));
         verify(publisher, never()).publishEvent(any(RedirectSettingsUpdatedEvent.class));
     }
 

@@ -131,7 +131,10 @@ public class RedirectRuleConsoleEndpoint {
                 "Redirects config map was not found")))
             .flatMap(configMap -> Mono.fromCallable(() -> serialize(configMap, settings))
                 .flatMap(updatedConfigMap -> client.update(updatedConfigMap)))
-            .doOnSuccess(ignored -> RedirectRuleRegistry.reload(settings))
+            .map(saved -> {
+                RedirectRuleRegistry.reload(settings);
+                return saved;
+            })
             .onErrorMap(JsonProcessingException.class, ex -> new ResponseStatusException(
                 HttpStatus.INTERNAL_SERVER_ERROR, "Unable to serialize redirect settings", ex))
             .then();

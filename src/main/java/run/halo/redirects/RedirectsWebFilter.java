@@ -32,6 +32,7 @@ public class RedirectsWebFilter implements AdditionalWebFilter {
                 ServerHttpResponse response = exchange.getResponse();
                 response.setStatusCode(HttpStatusCode.valueOf(match.statusCode()));
                 response.getHeaders().set("Location", match.location());
+                response.getHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
                 return response.setComplete();
             }
         }
