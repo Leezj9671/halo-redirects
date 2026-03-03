@@ -50,9 +50,13 @@ public class RedirectsWebFilter implements AdditionalWebFilter {
 
     private boolean shouldSkip(String path) {
         return path == null
-            || path.startsWith("/api")
-            || path.startsWith("/apis")
-            || path.startsWith("/console")
-            || path.startsWith("/actuator");
+            || isReservedPath(path, "/api")
+            || isReservedPath(path, "/apis")
+            || isReservedPath(path, "/console")
+            || isReservedPath(path, "/actuator");
+    }
+
+    private boolean isReservedPath(String path, String prefix) {
+        return path.equals(prefix) || path.startsWith(prefix + "/");
     }
 }

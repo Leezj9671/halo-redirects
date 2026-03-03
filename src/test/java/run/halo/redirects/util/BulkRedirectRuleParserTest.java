@@ -10,15 +10,18 @@ class BulkRedirectRuleParserTest {
         var rules = BulkRedirectRuleParser.parse("""
             /old-a -> /new-a
             /old-b => /new-b => 302
-            /old-c,/new-c,301,migrated
+            /old-c,/new-c,301,migrated,DIRECTORY
+            /old-d -> /new-d -> 301 -> DIRECTORY
             """);
 
-        assertEquals(3, rules.size());
+        assertEquals(4, rules.size());
         assertEquals("/old-a", rules.get(0).getFromPath());
         assertEquals("/new-a", rules.get(0).getToPath());
         assertEquals(301, rules.get(0).getStatusCode());
         assertEquals(302, rules.get(1).getStatusCode());
         assertEquals("migrated", rules.get(2).getNote());
+        assertEquals("DIRECTORY", rules.get(2).getMatchType());
+        assertEquals("DIRECTORY", rules.get(3).getMatchType());
     }
 
     @Test

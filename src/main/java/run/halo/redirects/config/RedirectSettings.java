@@ -13,6 +13,7 @@ public class RedirectSettings {
         private String toPath;
         private Integer statusCode;
         private String note;
+        private String matchType;
 
         public String getFromPath() {
             return fromPath;
@@ -44,6 +45,14 @@ public class RedirectSettings {
 
         public void setNote(String note) {
             this.note = note;
+        }
+
+        public String getMatchType() {
+            return matchType;
+        }
+
+        public void setMatchType(String matchType) {
+            this.matchType = matchType;
         }
     }
 

@@ -36,12 +36,14 @@ spec:
             每行一条，支持以下格式：
             /old-post -> /new-post
             /old-post -> /new-post -> 301
-            /old-post,/new-post,301,备注
+            /docs -> /knowledge -> 301 -> DIRECTORY
+            /old-post,/new-post,301,备注,DIRECTORY
             状态码不填时默认 301。以 # 开头的行会忽略。与下方逐条规则同时存在时，下方逐条规则优先。
           placeholder: |
             /old-post -> /new-post
             /docs/legacy -> https://example.com/docs -> 301
             /campaign,/landing,301,temporary campaign
+            /guides,/docs,301,,DIRECTORY
         - $formkit: repeater
           name: rules
           label: 重定向规则
@@ -50,15 +52,24 @@ spec:
             - $formkit: text
               name: fromPath
               label: 来源路径
-              help: 只填路径即可，例如 /old-post 或 /archives/1711109931805
+              help: 精确匹配时填写完整路径；目录匹配时填写目录前缀，例如 /docs
               validation: required
               placeholder: /old-post
             - $formkit: text
               name: toPath
               label: 目标地址
-              help: 支持站内路径或完整 URL，例如 /new-post 或 https://example.com/new-post
+              help: 支持站内路径或完整 URL。目录匹配时会自动保留后续子路径
               validation: required
               placeholder: /new-post
+            - $formkit: select
+              name: matchType
+              label: 匹配方式
+              value: EXACT
+              options:
+                - label: 精确匹配
+                  value: EXACT
+                - label: 目录匹配（保留子路径）
+                  value: DIRECTORY
             - $formkit: select
               name: statusCode
               label: 状态码

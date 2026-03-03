@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGIN_NAME="redirects"
-PLUGIN_VERSION="0.1.0"
+PLUGIN_VERSION="0.1.3"
 PLUGIN_JAR="redirects-${PLUGIN_VERSION}.jar"
 HALO_IMAGE="halohub/halo:2.22.14"
 DB_FILE="${ROOT_DIR}/.halo2/db/halo-next.mv.db"

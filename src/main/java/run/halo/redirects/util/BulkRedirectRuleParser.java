@@ -51,7 +51,15 @@ public final class BulkRedirectRuleParser {
         rule.setStatusCode(parseStatusCode(parts.length >= 3 ? parts[2] : null));
 
         if (parts.length >= 4 && hasText(parts[3])) {
-            rule.setNote(parts[3].trim());
+            if (parts.length == 4 && RedirectRuleSupport.isKnownMatchType(parts[3])) {
+                rule.setMatchType(RedirectRuleSupport.normalizeMatchType(parts[3]));
+            } else {
+                rule.setNote(parts[3].trim());
+            }
+        }
+
+        if (parts.length >= 5 && hasText(parts[4])) {
+            rule.setMatchType(RedirectRuleSupport.normalizeMatchType(parts[4]));
         }
 
         return rule;
@@ -59,15 +67,15 @@ public final class BulkRedirectRuleParser {
 
     private static String[] splitLine(String line) {
         if (line.contains("=>")) {
-            return line.split("\\s*=>\\s*", 4);
+            return line.split("\\s*=>\\s*", 5);
         }
 
         if (line.contains("->")) {
-            return line.split("\\s*->\\s*", 4);
+            return line.split("\\s*->\\s*", 5);
         }
 
         if (line.contains(",")) {
-            return line.split("\\s*,\\s*", 4);
+            return line.split("\\s*,\\s*", 5);
         }
 
         return null;

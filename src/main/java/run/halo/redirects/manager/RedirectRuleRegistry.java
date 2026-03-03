@@ -1,6 +1,7 @@
 package run.halo.redirects.manager;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,8 +11,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import run.halo.redirects.config.RedirectSettings;
-import run.halo.redirects.util.BulkRedirectRuleParser;
 import run.halo.redirects.util.PathNormalizer;
+import run.halo.redirects.util.RedirectRuleSupport;
 
 public final class RedirectRuleRegistry {
     private static final String SETTINGS_UPDATE_PATH =
@@ -34,7 +35,8 @@ public final class RedirectRuleRegistry {
             return;
         }
 
-        var reloadedRules = new LinkedHashMap<String, StoredRule>();
+        var reloadedExactRules = new LinkedHashMap<String, StoredRule>();
+        var reloadedDirectoryRules = new LinkedHashMap<String, DirectoryRule>();
 
         for (var rule : sourceRules) {
             var sourcePath = PathNormalizer.normalizePath(rule.getFromPath());
@@ -49,18 +51,36 @@ public final class RedirectRuleRegistry {
                 continue;
             }
 
-            reloadedRules.put(
+            if (RedirectRuleSupport.isDirectoryMatch(rule)) {
+                reloadedDirectoryRules.put(
+                    sourcePath,
+                    new DirectoryRule(
+                        sourcePath,
+                        target,
+                        normalizeStatusCode(rule.getStatusCode()),
+                        rule.getNote()
+                    )
+                );
+                continue;
+            }
+
+            reloadedExactRules.put(
                 sourcePath,
                 new StoredRule(target, normalizeStatusCode(rule.getStatusCode()), rule.getNote())
             );
         }
 
-        if (reloadedRules.isEmpty()) {
+        if (reloadedExactRules.isEmpty() && reloadedDirectoryRules.isEmpty()) {
             clear();
             return;
         }
 
-        SNAPSHOT.set(new Snapshot(Map.copyOf(reloadedRules),
+        var sortedDirectoryRules = reloadedDirectoryRules.values().stream()
+            .sorted(Comparator.comparingInt((DirectoryRule rule) -> rule.sourcePath().length())
+                .reversed())
+            .toList();
+
+        SNAPSHOT.set(new Snapshot(Map.copyOf(reloadedExactRules), List.copyOf(sortedDirectoryRules),
             Boolean.TRUE.equals(settings.getPreserveQueryString())));
     }
 
@@ -75,16 +95,27 @@ public final class RedirectRuleRegistry {
         }
 
         var snapshot = SNAPSHOT.get();
-        var rule = snapshot.rules().get(normalizedPath);
-        if (rule == null) {
-            return Optional.empty();
+        var exactRule = snapshot.exactRules().get(normalizedPath);
+        if (exactRule != null) {
+            return Optional.of(new ResolvedRedirect(
+                buildLocation(snapshot.preserveQueryString(), exactRule.target(), null, rawQuery),
+                exactRule.statusCode()
+            ));
         }
 
-        var location = snapshot.preserveQueryString()
-            ? PathNormalizer.appendRawQuery(rule.target(), rawQuery)
-            : rule.target();
+        for (var directoryRule : snapshot.directoryRules()) {
+            if (!matchesDirectory(directoryRule.sourcePath(), normalizedPath)) {
+                continue;
+            }
 
-        return Optional.of(new ResolvedRedirect(location, rule.statusCode()));
+            return Optional.of(new ResolvedRedirect(
+                buildLocation(snapshot.preserveQueryString(), directoryRule.target(),
+                    suffixFor(directoryRule.sourcePath(), normalizedPath), rawQuery),
+                directoryRule.statusCode()
+            ));
+        }
+
+        return Optional.empty();
     }
 
     public static boolean isEnabled() {
@@ -92,7 +123,8 @@ public final class RedirectRuleRegistry {
     }
 
     public static int size() {
-        return SNAPSHOT.get().rules().size();
+        var snapshot = SNAPSHOT.get();
+        return snapshot.exactRules().size() + snapshot.directoryRules().size();
     }
 
     public static boolean isSettingsMutation(ServerHttpRequest request) {
@@ -107,31 +139,70 @@ public final class RedirectRuleRegistry {
     }
 
     private static List<RedirectSettings.RedirectRule> collectRules(RedirectSettings settings) {
-        var mergedRules = new ArrayList<RedirectSettings.RedirectRule>();
-        mergedRules.addAll(BulkRedirectRuleParser.parse(settings.getBulkRules()));
-
-        if (settings.getRules() != null) {
-            mergedRules.addAll(settings.getRules());
-        }
-
-        return mergedRules;
+        return new ArrayList<>(RedirectRuleSupport.collectRules(settings));
     }
 
     private static boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
     }
 
-    private record Snapshot(Map<String, StoredRule> rules, boolean preserveQueryString) {
+    private static boolean matchesDirectory(String sourcePath, String requestPath) {
+        if ("/".equals(sourcePath)) {
+            return requestPath.startsWith("/");
+        }
+
+        return requestPath.equals(sourcePath) || requestPath.startsWith(sourcePath + "/");
+    }
+
+    private static String suffixFor(String sourcePath, String requestPath) {
+        if ("/".equals(sourcePath)) {
+            return "/".equals(requestPath) ? "" : requestPath;
+        }
+
+        return requestPath.equals(sourcePath) ? "" : requestPath.substring(sourcePath.length());
+    }
+
+    private static String buildLocation(boolean preserveQueryString, String target, String suffix,
+        String rawQuery) {
+        var location = applySuffix(target, suffix);
+        return preserveQueryString ? PathNormalizer.appendRawQuery(location, rawQuery) : location;
+    }
+
+    private static String applySuffix(String target, String suffix) {
+        if (!hasText(target) || !hasText(suffix)) {
+            return target;
+        }
+
+        var anchorIndex = target.indexOf('#');
+        var beforeAnchor = anchorIndex >= 0 ? target.substring(0, anchorIndex) : target;
+        var anchor = anchorIndex >= 0 ? target.substring(anchorIndex) : "";
+
+        var queryIndex = beforeAnchor.indexOf('?');
+        var base = queryIndex >= 0 ? beforeAnchor.substring(0, queryIndex) : beforeAnchor;
+        var query = queryIndex >= 0 ? beforeAnchor.substring(queryIndex) : "";
+
+        if (base.endsWith("/") && suffix.startsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+
+        return base + suffix + query + anchor;
+    }
+
+    private record Snapshot(Map<String, StoredRule> exactRules, List<DirectoryRule> directoryRules,
+                            boolean preserveQueryString) {
         private static Snapshot disabled() {
-            return new Snapshot(Map.of(), false);
+            return new Snapshot(Map.of(), List.of(), false);
         }
 
         private boolean enabled() {
-            return !rules.isEmpty();
+            return !exactRules.isEmpty() || !directoryRules.isEmpty();
         }
     }
 
     private record StoredRule(String target, int statusCode, String note) {
+    }
+
+    private record DirectoryRule(String sourcePath, String target, int statusCode, String note) {
     }
 
     public record ResolvedRedirect(String location, int statusCode) {

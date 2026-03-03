@@ -2,4 +2,4 @@ Manifest-Version: 1.0
 Plugin-Main-Class: run.halo.app.plugin.BasePlugin
 Build-Jdk-Spec: 21
 Implementation-Title: redirects
-Implementation-Version: 0.1.0
+Implementation-Version: 0.1.3
