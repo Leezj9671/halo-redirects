@@ -3,3 +3,4 @@ build/
 .halo2/
 .DS_Store
 ui/node_modules/
+.pnpm-store
