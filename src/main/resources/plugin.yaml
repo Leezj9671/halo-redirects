@@ -1,0 +1,22 @@
+apiVersion: plugin.halo.run/v1alpha1
+kind: Plugin
+metadata:
+  name: redirects
+spec:
+  enabled: true
+  version: "0.1.0"
+  requires: ">=2.22.0"
+  author:
+    name: Linus
+    website: https://github.com/Leezj9671
+  logo: logo.svg
+  homepage: https://github.com/Leezj9671/halo-redirects
+  repo: https://github.com/Leezj9671/halo-redirects
+  issues: https://github.com/Leezj9671/halo-redirects/issues
+  displayName: "Redirects"
+  description: "管理 Halo 博客的重定向规则，支持 301 和 302。"
+  settingName: redirects-settings
+  configMapName: redirects-config
+  license:
+    - name: "GPL-3.0"
+      url: "https://www.gnu.org/licenses/gpl-3.0.html"

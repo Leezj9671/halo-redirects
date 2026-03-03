@@ -1,0 +1,11 @@
+services:
+  halo:
+    image: halohub/halo:2.22.14
+    container_name: halo-redirects-dev
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./.halo2:/root/.halo2
+    environment:
+      JVM_OPTS: "-Xms256m -Xmx512m"

@@ -1,0 +1,74 @@
+apiVersion: v1alpha1
+kind: Setting
+metadata:
+  name: redirects-settings
+spec:
+  forms:
+    - group: basic
+      label: 基础设置
+      formSchema:
+        - $formkit: radio
+          name: enabled
+          id: enabled
+          label: 启用重定向
+          value: true
+          options:
+            - label: 启用
+              value: true
+            - label: 关闭
+              value: false
+        - $formkit: radio
+          name: preserveQueryString
+          id: preserveQueryString
+          label: 保留原请求查询参数
+          help: 如果原链接包含 ?utm_source=... 之类的参数，会自动拼接到目标地址
+          value: true
+          options:
+            - label: 保留
+              value: true
+            - label: 不保留
+              value: false
+        - $formkit: textarea
+          name: bulkRules
+          id: bulkRules
+          label: 批量粘贴规则
+          help: |
+            每行一条，支持以下格式：
+            /old-post -> /new-post
+            /old-post -> /new-post -> 301
+            /old-post,/new-post,301,备注
+            状态码不填时默认 301。以 # 开头的行会忽略。与下方逐条规则同时存在时，下方逐条规则优先。
+          placeholder: |
+            /old-post -> /new-post
+            /docs/legacy -> https://example.com/docs -> 301
+            /campaign,/landing,301,temporary campaign
+        - $formkit: repeater
+          name: rules
+          label: 重定向规则
+          value: []
+          children:
+            - $formkit: text
+              name: fromPath
+              label: 来源路径
+              help: 只填路径即可，例如 /old-post 或 /archives/1711109931805
+              validation: required
+              placeholder: /old-post
+            - $formkit: text
+              name: toPath
+              label: 目标地址
+              help: 支持站内路径或完整 URL，例如 /new-post 或 https://example.com/new-post
+              validation: required
+              placeholder: /new-post
+            - $formkit: select
+              name: statusCode
+              label: 状态码
+              value: 301
+              options:
+                - label: 301 永久重定向
+                  value: 301
+                - label: 302 临时重定向
+                  value: 302
+            - $formkit: text
+              name: note
+              label: 备注
+              placeholder: 旧链接合并到新文章
