@@ -13,3 +13,4 @@ jobs:
       java-version: 21
       node-version: 22
       pnpm-version: 9
+      ui-path: ui
