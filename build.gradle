@@ -2,7 +2,7 @@ plugins {
     id 'java'
 }
 
-def haloPlatformVersion = '2.22.11'
+def haloPlatformVersion = '2.20.20'
 
 group = 'run.halo.redirects'
 version = '0.1.0'

@@ -5,8 +5,9 @@
 当前开发和测试基线：
 
 - Halo Docker 镜像：`halohub/halo:2.22.14`
-- Halo 插件平台 BOM：`run.halo.tools.platform:plugin:2.22.11`
+- Halo 插件平台 BOM：`run.halo.tools.platform:plugin:2.20.20`
 - Java：21
+- 最低兼容版本（已实测）：Halo `2.19.3`
 
 当前实现：
 
@@ -39,6 +40,16 @@
 默认地址：
 
 - Halo: http://localhost:8090
+
+兼容性说明：
+
+- 已本地实测通过：Halo `2.19.3`、`2.21.10`、`2.22.14`
+- 插件 `requires` 已调整为 `>=2.19.3`
+- 之所以不直接标成 `>=2.19.0`，是因为当前只实际验证到了 `2.19.3`
+
+发布说明：
+
+- Halo 应用市场上架与自动发布流程见 [docs/halo-appstore-release.md](/Users/linus/code/halo-plugins/redirects/docs/halo-appstore-release.md)
 
 批量添加格式：
 

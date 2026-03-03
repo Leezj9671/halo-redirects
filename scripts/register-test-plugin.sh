@@ -42,7 +42,7 @@ cat > "${JSON_FILE}" <<JSON
         "url": "https://www.gnu.org/licenses/gpl-3.0.html"
       }
     ],
-    "requires": ">=2.22.0",
+    "requires": ">=2.19.3",
     "enabled": true,
     "settingName": "redirects-settings",
     "configMapName": "redirects-config"

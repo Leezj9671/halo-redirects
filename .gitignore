@@ -1,4 +1,4 @@
 .gradle/
 build/
 .halo2/
-
+.DS_Store
