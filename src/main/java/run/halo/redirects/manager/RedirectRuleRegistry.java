@@ -8,15 +8,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.server.reactive.ServerHttpRequest;
 import run.halo.redirects.config.RedirectSettings;
 import run.halo.redirects.util.PathNormalizer;
 import run.halo.redirects.util.RedirectRuleSupport;
 
 public final class RedirectRuleRegistry {
-    private static final String SETTINGS_UPDATE_PATH =
-        "/apis/api.console.halo.run/v1alpha1/plugins/redirects/config";
     private static final AtomicReference<Snapshot> SNAPSHOT =
         new AtomicReference<>(Snapshot.disabled());
 
@@ -125,13 +121,6 @@ public final class RedirectRuleRegistry {
     public static int size() {
         var snapshot = SNAPSHOT.get();
         return snapshot.exactRules().size() + snapshot.directoryRules().size();
-    }
-
-    public static boolean isSettingsMutation(ServerHttpRequest request) {
-        var method = request.getMethod();
-        return SETTINGS_UPDATE_PATH.equals(request.getURI().getPath())
-            && method != null
-            && method != HttpMethod.GET;
     }
 
     private static int normalizeStatusCode(Integer statusCode) {

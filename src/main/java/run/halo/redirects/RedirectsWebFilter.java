@@ -1,6 +1,5 @@
 package run.halo.redirects;
 
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -9,16 +8,10 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 import run.halo.app.security.AdditionalWebFilter;
-import run.halo.redirects.listener.RedirectSettingsUpdatedEvent;
 import run.halo.redirects.manager.RedirectRuleRegistry;
 
 @Component
 public class RedirectsWebFilter implements AdditionalWebFilter {
-    private final ApplicationEventPublisher eventPublisher;
-
-    public RedirectsWebFilter(ApplicationEventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
-    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -37,11 +30,7 @@ public class RedirectsWebFilter implements AdditionalWebFilter {
             }
         }
 
-        return chain.filter(exchange).doOnSuccess(unused -> {
-            if (RedirectRuleRegistry.isSettingsMutation(request)) {
-                eventPublisher.publishEvent(RedirectSettingsUpdatedEvent.trigger(this));
-            }
-        });
+        return chain.filter(exchange);
     }
 
     @Override
