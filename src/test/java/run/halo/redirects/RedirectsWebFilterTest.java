@@ -91,7 +91,7 @@ class RedirectsWebFilterTest {
 
         assertTrue(chainCalled.get());
         assertNull(exchange.getResponse().getStatusCode());
-        assertFalse(exchange.getResponse().getHeaders().containsKey("Location"));
+        assertNull(exchange.getResponse().getHeaders().getFirst("Location"));
     }
 
     @Test
