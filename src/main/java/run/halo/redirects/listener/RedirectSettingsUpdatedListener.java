@@ -75,21 +75,38 @@ public class RedirectSettingsUpdatedListener
 
     private boolean belongsToCurrentPlugin(PluginConfigUpdatedEvent event) {
         var source = event.getSource();
-        if (source == null) {
-            return false;
-        }
-
         if (source == settingFetcher) {
             return true;
         }
 
-        var delegateFetcher = readField(settingFetcher, "delegateFetcher");
-        if (delegateFetcher == source) {
-            return true;
+        if (source != null) {
+            var delegateFetcher = readField(settingFetcher, "delegateFetcher");
+            if (delegateFetcher == source) {
+                return true;
+            }
+
+            if (PLUGIN_NAME.equals(readField(source, "pluginName"))
+                || CONFIG_MAP_NAME.equals(readField(source, "configMapName"))) {
+                return true;
+            }
         }
 
-        return PLUGIN_NAME.equals(readField(source, "pluginName"))
-            || CONFIG_MAP_NAME.equals(readField(source, "configMapName"));
+        try {
+            var newConfig = event.getNewConfig();
+            if (newConfig != null) {
+                var metadata = newConfig.get("metadata");
+                if (metadata != null && metadata.isObject()) {
+                    var nameNode = metadata.get("name");
+                    if (nameNode != null && CONFIG_MAP_NAME.equals(nameNode.asText())) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.debug("[redirects] failed to inspect newConfig metadata", ex);
+        }
+
+        return false;
     }
 
     private JsonNode extractSettingsNode(PluginConfigUpdatedEvent event) throws Exception {
