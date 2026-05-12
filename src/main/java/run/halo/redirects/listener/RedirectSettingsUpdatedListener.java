@@ -134,6 +134,20 @@ public class RedirectSettingsUpdatedListener
             return normalized.isEmpty() ? null : MAPPER.readTree(normalized);
         }
 
+        try {
+            var isTextualMethod = basicValue.getClass().getMethod("isTextual");
+            boolean isTextual = (Boolean) isTextualMethod.invoke(basicValue);
+            if (isTextual) {
+                var asTextMethod = basicValue.getClass().getMethod("asText");
+                var text = (String) asTextMethod.invoke(basicValue);
+                var normalized = text != null ? text.trim() : "";
+                return normalized.isEmpty() ? null : MAPPER.readTree(normalized);
+            }
+            return MAPPER.readTree(basicValue.toString());
+        } catch (NoSuchMethodException ignored) {
+            // Fallback for maps or other unknown types
+        }
+
         return MAPPER.valueToTree(basicValue);
     }
 
