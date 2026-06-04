@@ -3,6 +3,7 @@ package run.halo.redirects.listener;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -35,13 +36,30 @@ public class RedirectSettingsUpdatedListener
     @Override
     public void onApplicationEvent(RedirectSettingsUpdatedEvent event) {
         try {
-            var settings = settingFetcher.fetch(SETTINGS_GROUP, RedirectSettings.class)
-                .orElse(null);
+            var settings = fetchSettings();
             RedirectRuleRegistry.reload(settings);
             log.info("[redirects] loaded {} active redirect rule(s)", RedirectRuleRegistry.size());
         } catch (Exception ex) {
             log.warn("[redirects] failed to reload redirect settings on startup", ex);
         }
+    }
+
+    /**
+     * Invokes {@code SettingFetcher.fetch(String, Class)} reflectively.
+     *
+     * <p>{@code SettingFetcher} switched from a concrete class (Halo &lt;= 2.22) to an interface
+     * (Halo &gt;= 2.23). A direct call bakes the invoke opcode (invokevirtual vs invokeinterface)
+     * into the bytecode at compile time, so a jar built against one shape throws
+     * {@link IncompatibleClassChangeError} on the other. Reflection resolves the method at runtime
+     * and stays compatible across all supported Halo versions.
+     */
+    private RedirectSettings fetchSettings() throws Exception {
+        var method = settingFetcher.getClass().getMethod("fetch", String.class, Class.class);
+        var result = method.invoke(settingFetcher, SETTINGS_GROUP, RedirectSettings.class);
+        if (result instanceof Optional<?> optional) {
+            return (RedirectSettings) optional.orElse(null);
+        }
+        return null;
     }
 
     /**
