@@ -39,13 +39,21 @@
 - 在 Halo 的本地 H2 数据库里注册 `redirects` 插件资源
 - 在重新启动前停止已有的本地测试容器，避免 H2 文件锁
 
+端到端测试（在一次性容器中安装插件、写入配置并校验 301/302、目录匹配、查询参数、Console API 和重启后加载）：
+
+```bash
+./scripts/build-in-docker.sh
+./scripts/e2e-test.sh halohub/halo:2.26.1 build/libs/redirects-0.1.7.jar
+```
+
 默认地址：
 
 - Halo: http://localhost:8090
 
 兼容性说明：
 
-- 已本地实测通过：Halo `2.19.3`、`2.21.10`、`2.22.14`
+- 已本地实测通过：Halo `2.19.3`、`2.21.10`、`2.22.14`、`2.25.4`、`2.26.1`
+- 自 `0.1.7` 起，插件不再依赖 `SettingFetcher`（Halo 2.23 起由类改为接口）和 `PluginConfigUpdatedEvent` 的配置载荷（Halo 2.25 起改为 Jackson 3 节点），统一直接读写插件自己的 ConfigMap，同一个 jar 兼容以上所有版本
 - 插件 `requires` 已调整为 `>=2.19.3`
 - 之所以不直接标成 `>=2.19.0`，是因为当前只实际验证到了 `2.19.3`
 

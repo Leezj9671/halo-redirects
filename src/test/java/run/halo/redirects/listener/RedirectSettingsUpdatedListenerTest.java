@@ -1,15 +1,15 @@
 package run.halo.redirects.listener;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
+import run.halo.app.extension.ConfigMap;
+import run.halo.app.extension.ReactiveExtensionClient;
 import run.halo.app.plugin.PluginConfigUpdatedEvent;
-import run.halo.app.plugin.SettingFetcher;
 import run.halo.redirects.config.RedirectSettings;
+import run.halo.redirects.config.RedirectSettingsLoader;
 import run.halo.redirects.manager.RedirectRuleRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,10 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RedirectSettingsUpdatedListenerTest {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @AfterEach
     void tearDown() {
@@ -28,47 +29,44 @@ class RedirectSettingsUpdatedListenerTest {
     }
 
     @Test
-    void shouldReloadRulesFromSettingFetcherOnStartupEvent() {
-        var settingFetcher = mock(SettingFetcher.class);
-        var settings = enabledSettings(List.of(rule("/legacy", "/latest", 301)));
-        when(settingFetcher.fetch(eq("basic"), eq(RedirectSettings.class)))
-            .thenReturn(Optional.of(settings));
+    void shouldReloadRulesFromConfigMapOnStartupEvent() {
+        var client = clientReturning(configMap(enabledSettings(rule("/legacy", "/latest", 301))));
 
-        var listener = new RedirectSettingsUpdatedListener(settingFetcher);
-        listener.onApplicationEvent(RedirectSettingsUpdatedEvent.trigger(this));
+        listener(client).onApplicationEvent(RedirectSettingsUpdatedEvent.trigger(this));
 
         assertTrue(RedirectRuleRegistry.resolve("/legacy", null).isPresent());
     }
 
     @Test
-    void shouldClearRulesWhenSettingsAreMissing() {
-        RedirectRuleRegistry.reload(enabledSettings(List.of(rule("/legacy", "/latest", 301))));
+    void shouldClearRulesWhenConfigMapIsMissing() {
+        RedirectRuleRegistry.reload(enabledSettings(rule("/legacy", "/latest", 301)));
+        var client = mock(ReactiveExtensionClient.class);
+        when(client.fetch(eq(ConfigMap.class), eq(RedirectSettingsLoader.CONFIG_MAP_NAME)))
+            .thenReturn(Mono.empty());
 
-        var settingFetcher = mock(SettingFetcher.class);
-        when(settingFetcher.fetch(eq("basic"), eq(RedirectSettings.class)))
-            .thenReturn(Optional.empty());
-
-        var listener = new RedirectSettingsUpdatedListener(settingFetcher);
-        listener.onApplicationEvent(RedirectSettingsUpdatedEvent.trigger(this));
+        listener(client).onApplicationEvent(RedirectSettingsUpdatedEvent.trigger(this));
 
         assertFalse(RedirectRuleRegistry.isEnabled());
     }
 
     @Test
-    void shouldReloadRulesOnPluginConfigUpdatedEvent() {
-        var settingFetcher = mock(SettingFetcher.class);
-        var listener = new RedirectSettingsUpdatedListener(settingFetcher);
+    void shouldClearRulesWhenBasicGroupIsMissing() {
+        RedirectRuleRegistry.reload(enabledSettings(rule("/legacy", "/latest", 301)));
+        var configMap = new ConfigMap();
+        configMap.setData(Map.of("other", "{}"));
 
-        var settings = enabledSettings(List.of(rule("/blog/old", "/blog/new", 302)));
-        var basicJson = TextNode.valueOf(writeSettings(settings));
+        listener(clientReturning(configMap))
+            .onApplicationEvent(RedirectSettingsUpdatedEvent.trigger(this));
 
-        var event = PluginConfigUpdatedEvent.builder()
-            .source(new PluginConfigSource("redirects", "redirects-config"))
-            .oldConfig(Map.of())
-            .newConfig(Map.of("basic", basicJson))
-            .build();
+        assertFalse(RedirectRuleRegistry.isEnabled());
+    }
 
-        listener.onPluginConfigUpdated(event);
+    @Test
+    void shouldReloadRulesFromConfigMapOnPluginConfigUpdatedEvent() {
+        var client = clientReturning(configMap(enabledSettings(rule("/blog/old", "/blog/new", 302))));
+
+        // The event payload is ignored on purpose: since Halo 2.25 it carries Jackson 3 nodes.
+        listener(client).onPluginConfigUpdated(configUpdatedEvent(new PluginSource("redirects")));
 
         var resolved = RedirectRuleRegistry.resolve("/blog/old", null);
         assertTrue(resolved.isPresent());
@@ -77,119 +75,95 @@ class RedirectSettingsUpdatedListenerTest {
     }
 
     @Test
-    void shouldClearRulesWhenPluginConfigUpdatedWithNoBasicGroup() {
-        RedirectRuleRegistry.reload(enabledSettings(List.of(rule("/old", "/new", 301))));
-        assertTrue(RedirectRuleRegistry.isEnabled());
+    void shouldReloadWhenEventSourceDoesNotExposePluginName() {
+        var client = clientReturning(configMap(enabledSettings(rule("/a", "/b", 301))));
 
-        var settingFetcher = mock(SettingFetcher.class);
-        var listener = new RedirectSettingsUpdatedListener(settingFetcher);
+        listener(client).onPluginConfigUpdated(configUpdatedEvent(new Object()));
 
-        var event = PluginConfigUpdatedEvent.builder()
-            .source(new PluginConfigSource("redirects", "redirects-config"))
-            .oldConfig(Map.of())
-            .newConfig(Map.of())
-            .build();
+        assertTrue(RedirectRuleRegistry.resolve("/a", null).isPresent());
+    }
 
-        listener.onPluginConfigUpdated(event);
+    @Test
+    void shouldClearRulesWhenSettingsAreDisabled() {
+        RedirectRuleRegistry.reload(enabledSettings(rule("/legacy", "/latest", 301)));
+        var disabled = enabledSettings(rule("/legacy", "/latest", 301));
+        disabled.setEnabled(false);
+
+        listener(clientReturning(configMap(disabled)))
+            .onPluginConfigUpdated(configUpdatedEvent(new PluginSource("redirects")));
 
         assertFalse(RedirectRuleRegistry.isEnabled());
     }
 
     @Test
-    void shouldClearRulesWhenPluginConfigUpdatedWithDisabledSettings() {
-        RedirectRuleRegistry.reload(enabledSettings(List.of(rule("/old", "/new", 301))));
-        assertTrue(RedirectRuleRegistry.isEnabled());
+    void shouldKeepPreviousRulesWhenStoredJsonIsInvalid() {
+        RedirectRuleRegistry.reload(enabledSettings(rule("/legacy", "/latest", 301)));
+        var configMap = new ConfigMap();
+        configMap.setData(Map.of(RedirectSettingsLoader.SETTINGS_GROUP, "{not json"));
 
-        var settingFetcher = mock(SettingFetcher.class);
-        var listener = new RedirectSettingsUpdatedListener(settingFetcher);
+        listener(clientReturning(configMap))
+            .onPluginConfigUpdated(configUpdatedEvent(new PluginSource("redirects")));
 
-        var disabledSettings = new RedirectSettings();
-        disabledSettings.setEnabled(false);
-        disabledSettings.setRules(List.of(rule("/old", "/new", 301)));
-        var basicJson = TextNode.valueOf(writeSettings(disabledSettings));
-
-        var event = PluginConfigUpdatedEvent.builder()
-            .source(new PluginConfigSource("redirects", "redirects-config"))
-            .oldConfig(Map.of())
-            .newConfig(Map.of("basic", basicJson))
-            .build();
-
-        listener.onPluginConfigUpdated(event);
-
-        assertFalse(RedirectRuleRegistry.isEnabled());
-    }
-
-    @Test
-    void shouldStillReloadRulesWhenPluginConfigAlreadyProvidesJsonNode() {
-        var settingFetcher = mock(SettingFetcher.class);
-        var listener = new RedirectSettingsUpdatedListener(settingFetcher);
-
-        var settings = enabledSettings(List.of(rule("/legacy/path", "/modern/path", 301)));
-        var basicNode = MAPPER.valueToTree(settings);
-
-        var event = PluginConfigUpdatedEvent.builder()
-            .source(new PluginConfigSource("redirects", "redirects-config"))
-            .oldConfig(Map.of())
-            .newConfig(Map.of("basic", basicNode))
-            .build();
-
-        listener.onPluginConfigUpdated(event);
-
-        var resolved = RedirectRuleRegistry.resolve("/legacy/path", null);
-        assertTrue(resolved.isPresent());
-        assertEquals("/modern/path", resolved.get().location());
+        assertTrue(RedirectRuleRegistry.resolve("/legacy", null).isPresent());
     }
 
     @Test
     void shouldIgnorePluginConfigEventsFromOtherPlugins() {
-        RedirectRuleRegistry.reload(enabledSettings(List.of(rule("/kept", "/target", 301))));
+        var client = mock(ReactiveExtensionClient.class);
 
-        var settingFetcher = mock(SettingFetcher.class);
-        var listener = new RedirectSettingsUpdatedListener(settingFetcher);
+        listener(client).onPluginConfigUpdated(configUpdatedEvent(new PluginSource("other-plugin")));
 
-        var event = PluginConfigUpdatedEvent.builder()
-            .source(new PluginConfigSource("other-plugin", "other-config"))
+        verify(client, never()).fetch(eq(ConfigMap.class), eq(RedirectSettingsLoader.CONFIG_MAP_NAME));
+    }
+
+    private static RedirectSettingsUpdatedListener listener(ReactiveExtensionClient client) {
+        return new RedirectSettingsUpdatedListener(new RedirectSettingsLoader(client));
+    }
+
+    private static ReactiveExtensionClient clientReturning(ConfigMap configMap) {
+        var client = mock(ReactiveExtensionClient.class);
+        when(client.fetch(eq(ConfigMap.class), eq(RedirectSettingsLoader.CONFIG_MAP_NAME)))
+            .thenReturn(Mono.just(configMap));
+        return client;
+    }
+
+    private static ConfigMap configMap(RedirectSettings settings) {
+        var configMap = new ConfigMap();
+        configMap.setData(Map.of(RedirectSettingsLoader.SETTINGS_GROUP,
+            RedirectSettingsLoader.write(settings)));
+        return configMap;
+    }
+
+    private static PluginConfigUpdatedEvent configUpdatedEvent(Object source) {
+        return PluginConfigUpdatedEvent.builder()
+            .source(source)
             .oldConfig(Map.of())
             .newConfig(Map.of())
             .build();
-
-        listener.onPluginConfigUpdated(event);
-
-        var resolved = RedirectRuleRegistry.resolve("/kept", null);
-        assertTrue(resolved.isPresent());
-        assertEquals("/target", resolved.get().location());
     }
 
-    private RedirectSettings enabledSettings(List<RedirectSettings.RedirectRule> rules) {
+    private static RedirectSettings enabledSettings(RedirectSettings.RedirectRule... rules) {
         var settings = new RedirectSettings();
         settings.setEnabled(true);
-        settings.setRules(rules);
+        settings.setPreserveQueryString(true);
+        settings.setRules(List.of(rules));
         return settings;
     }
 
-    private String writeSettings(RedirectSettings settings) {
-        try {
-            return MAPPER.writeValueAsString(settings);
-        } catch (Exception ex) {
-            throw new AssertionError(ex);
-        }
-    }
-
-    private RedirectSettings.RedirectRule rule(String from, String to, int statusCode) {
+    private static RedirectSettings.RedirectRule rule(String fromPath, String toPath, int statusCode) {
         var rule = new RedirectSettings.RedirectRule();
-        rule.setFromPath(from);
-        rule.setToPath(to);
+        rule.setFromPath(fromPath);
+        rule.setToPath(toPath);
         rule.setStatusCode(statusCode);
         return rule;
     }
 
-    private static final class PluginConfigSource {
+    private static final class PluginSource {
+        @SuppressWarnings("unused")
         private final String pluginName;
-        private final String configMapName;
 
-        private PluginConfigSource(String pluginName, String configMapName) {
+        private PluginSource(String pluginName) {
             this.pluginName = pluginName;
-            this.configMapName = configMapName;
         }
     }
 }
