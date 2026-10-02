@@ -87,19 +87,40 @@ check "GET plugin settings endpoint" 200 \
 check "GET export csv" 200 \
   "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" "$BASE/apis/console.api.redirects.halo.run/v1alpha1/plugins/redirects/rules/export?format=csv")"
 
-# 3) disable via config -> no redirect
+# 3) non-ASCII paths, methods, 410, loops, csv-only export
+code=$(put_config '{"enabled":true,"preserveQueryString":true,"rules":[{"fromPath":"/archives/旧文章","toPath":"/archives/新文章","statusCode":301,"matchType":"EXACT"},{"fromPath":"/旧目录","toPath":"/new-dir","statusCode":308,"matchType":"DIRECTORY"},{"fromPath":"/deleted","statusCode":410,"matchType":"EXACT"},{"fromPath":"/loop-a","toPath":"/loop-b","statusCode":301},{"fromPath":"/loop-b","toPath":"/loop-a","statusCode":301},{"fromPath":"/form","toPath":"/elsewhere","statusCode":301}]}')
+check "put config (unicode)" 204 "$code"
+sleep 3
+location() { curl -s -o /dev/null -D - "$@" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}'; }
+check "chinese exact location" "/archives/%E6%96%B0%E6%96%87%E7%AB%A0" \
+  "$(location "$BASE/archives/%E6%97%A7%E6%96%87%E7%AB%A0")"
+check "chinese directory 308" "308 $BASE/new-dir/%E5%AD%90%20x" \
+  "$(status '/%E6%97%A7%E7%9B%AE%E5%BD%95/%E5%AD%90%20x')"
+check "410 gone" "410 " "$(status /deleted)"
+check "loop rules skipped" 404 "$(status /loop-a | cut -d' ' -f1)"
+check "POST not redirected" false \
+  "$([[ "$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/form")" == 301 ]] && echo true || echo false)"
+check "HEAD redirected" 301 "$(curl -s -o /dev/null -w "%{http_code}" -I "$BASE/form")"
+check "GET export xlsx rejected" 400 \
+  "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" "$BASE/apis/console.api.redirects.halo.run/v1alpha1/plugins/redirects/rules/export?format=xlsx")"
+printf 'fromPath,toPath,statusCode\n/imported,/target,302\n' > "${TMPDIR:-/tmp}/redirects-e2e.csv"
+check "POST import csv" 200 \
+  "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" -F "file=@${TMPDIR:-/tmp}/redirects-e2e.csv" "$BASE/apis/console.api.redirects.halo.run/v1alpha1/plugins/redirects/rules/import?mode=append")"
+check "imported rule active" "302 $BASE/target" "$(status /imported)"
+
+# 4) disable via config -> no redirect
 put_config '{"enabled":false,"preserveQueryString":true,"rules":[{"fromPath":"/old-post","toPath":"/new-post","statusCode":301,"matchType":"EXACT"}]}' >/dev/null
 sleep 3
 check "disabled => no redirect" 404 "$(status /old-post | cut -d' ' -f1)"
 
-# 4) restart -> rules loaded on startup
+# 5) restart -> rules loaded on startup
 put_config '{"enabled":true,"preserveQueryString":false,"rules":[{"fromPath":"/after-restart","toPath":"/ok","statusCode":301,"matchType":"EXACT"}]}' >/dev/null
 docker restart "$NAME" >/dev/null; wait_ready
 for _ in $(seq 1 20); do [[ "$(status /after-restart)" == 301* ]] && break; sleep 2; done
 check "rules loaded after restart" "301 $BASE/ok" "$(status /after-restart)"
 
 echo "  -- plugin log lines:"
-docker logs "$NAME" 2>&1 | grep -E "\[redirects\]|Unable to start plugin 'redirects|IncompatibleClassChange|UnrecognizedProperty" | cut -c1-220 | sed 's/^/     /' | tail -12
+docker logs "$NAME" 2>&1 | grep -E "\[redirects\]|NoClassDefFound|Unable to start plugin 'redirects|IncompatibleClassChange|UnrecognizedProperty" | cut -c1-220 | sed 's/^/     /' | tail -12
 echo "RESULT: $pass passed, $fail failed"
 [[ "${KEEP:-}" == 1 ]] || docker rm -f "$NAME" >/dev/null
 [[ $fail -eq 0 ]]

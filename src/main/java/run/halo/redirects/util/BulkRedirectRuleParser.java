@@ -41,14 +41,22 @@ public final class BulkRedirectRuleParser {
 
         var fromPath = parts[0].trim();
         var toPath = parts[1].trim();
-        if (!hasText(fromPath) || !hasText(toPath)) {
+        var statusCode = RedirectRuleSupport.parseStatusCode(parts.length >= 3 ? parts[2] : null);
+
+        // "/gone -> 410": a bare 410 in the target column means the page is gone.
+        if (parts.length == 2 && RedirectRuleSupport.isGone(RedirectRuleSupport.toStatusCode(toPath))) {
+            toPath = "";
+            statusCode = RedirectRuleSupport.STATUS_GONE;
+        }
+
+        if (!hasText(fromPath) || (!hasText(toPath) && !RedirectRuleSupport.isGone(statusCode))) {
             return null;
         }
 
         var rule = new RedirectSettings.RedirectRule();
         rule.setFromPath(fromPath);
-        rule.setToPath(toPath);
-        rule.setStatusCode(parseStatusCode(parts.length >= 3 ? parts[2] : null));
+        rule.setToPath(hasText(toPath) ? toPath : null);
+        rule.setStatusCode(statusCode);
 
         if (parts.length >= 4 && hasText(parts[3])) {
             if (parts.length == 4 && RedirectRuleSupport.isKnownMatchType(parts[3])) {
@@ -79,19 +87,6 @@ public final class BulkRedirectRuleParser {
         }
 
         return null;
-    }
-
-    private static Integer parseStatusCode(String rawStatusCode) {
-        if (!hasText(rawStatusCode)) {
-            return 301;
-        }
-
-        var statusCode = rawStatusCode.trim();
-        if ("302".equals(statusCode)) {
-            return 302;
-        }
-
-        return 301;
     }
 
     private static boolean hasText(String value) {

@@ -3,6 +3,7 @@ package run.halo.redirects.util;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class BulkRedirectRuleParserTest {
     @Test
@@ -36,5 +37,25 @@ class BulkRedirectRuleParserTest {
         assertEquals(1, rules.size());
         assertEquals("/valid", rules.get(0).getFromPath());
         assertEquals("/target", rules.get(0).getToPath());
+    }
+
+    @Test
+    void shouldParseExtraStatusCodesAndGoneRules() {
+        var rules = BulkRedirectRuleParser.parse("""
+            /moved -> /new -> 308
+            /gone -> 410
+            /gone-csv,,410,removed
+            /typo -> /new -> 30l
+            /missing-target,,301
+            """);
+
+        assertEquals(4, rules.size());
+        assertEquals(308, rules.get(0).getStatusCode());
+        assertEquals("/gone", rules.get(1).getFromPath());
+        assertNull(rules.get(1).getToPath());
+        assertEquals(410, rules.get(1).getStatusCode());
+        assertEquals(410, rules.get(2).getStatusCode());
+        assertEquals("removed", rules.get(2).getNote());
+        assertEquals(301, rules.get(3).getStatusCode());
     }
 }

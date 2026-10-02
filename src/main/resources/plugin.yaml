@@ -6,7 +6,7 @@ metadata:
     store.halo.run/app-id: app-qjw66wdx
 spec:
   enabled: true
-  version: "0.1.7"
+  version: "0.2.0"
   requires: ">=2.19.3"
   author:
     name: Linus

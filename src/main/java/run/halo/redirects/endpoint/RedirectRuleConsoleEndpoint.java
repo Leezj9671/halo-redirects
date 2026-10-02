@@ -30,10 +30,6 @@ import run.halo.redirects.util.RedirectRuleSupport;
 @RestController
 @RequestMapping("/apis/console.api.redirects.halo.run/v1alpha1/plugins/redirects")
 public class RedirectRuleConsoleEndpoint {
-    private static final MediaType XLSX_MEDIA_TYPE = MediaType.parseMediaType(
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-
     private final RedirectSettingsLoader settingsLoader;
 
     public RedirectRuleConsoleEndpoint(RedirectSettingsLoader settingsLoader) {
@@ -80,8 +76,7 @@ public class RedirectRuleConsoleEndpoint {
                 var body = RedirectRuleFileCodec.exportRules(rules, normalizedFormat);
 
                 return ResponseEntity.ok()
-                    .contentType("xlsx".equals(normalizedFormat) ? XLSX_MEDIA_TYPE
-                        : new MediaType("text", "csv", StandardCharsets.UTF_8))
+                    .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"redirect-rules." + normalizedFormat + "\"")
                     .body(body);

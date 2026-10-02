@@ -32,35 +32,33 @@ spec:
           name: bulkRules
           id: bulkRules
           label: 批量粘贴规则
-          help: |
-            每行一条，支持以下格式：
-            /old-post -> /new-post
-            /old-post -> /new-post -> 301
-            /docs -> /knowledge -> 301 -> DIRECTORY
-            /old-post,/new-post,301,备注,DIRECTORY
-            状态码不填时默认 301。以 # 开头的行会忽略。与下方逐条规则同时存在时，下方逐条规则优先。
+          help: 每行一条，格式见输入框示例；状态码默认 301，# 开头为注释。与下方规则来源路径相同时，以下方为准。
+          rows: 6
           placeholder: |
+            # 来源 -> 目标 [-> 状态码] [-> DIRECTORY]
             /old-post -> /new-post
-            /docs/legacy -> https://example.com/docs -> 301
-            /campaign,/landing,301,temporary campaign
-            /guides,/docs,301,,DIRECTORY
+            /docs/legacy -> https://example.com/docs -> 302
+            /docs -> /knowledge -> 301 -> DIRECTORY
+            /deleted-post -> 410
+            # 也可用逗号：来源,目标,状态码,备注,匹配方式
+            /campaign,/landing,302,活动页
         - $formkit: repeater
           name: rules
           label: 重定向规则
+          help: 目录匹配会把子路径一并带到目标，例如 /docs/a -> /knowledge/a。目标支持站内路径或完整 URL。
+          addLabel: 添加规则
           value: []
           children:
             - $formkit: text
               name: fromPath
               label: 来源路径
-              help: 精确匹配时填写完整路径；目录匹配时填写目录前缀，例如 /docs
               validation: required
               placeholder: /old-post
             - $formkit: text
               name: toPath
               label: 目标地址
-              help: 支持站内路径或完整 URL。目录匹配时会自动保留后续子路径
-              validation: required
-              placeholder: /new-post
+              help: 状态码为 410 时留空
+              placeholder: /new-post 或 https://example.com/page
             - $formkit: select
               name: matchType
               label: 匹配方式
@@ -79,7 +77,13 @@ spec:
                   value: 301
                 - label: 302 临时重定向
                   value: 302
+                - label: 307 临时重定向（保留请求方法）
+                  value: 307
+                - label: 308 永久重定向（保留请求方法）
+                  value: 308
+                - label: 410 已删除（不跳转）
+                  value: 410
             - $formkit: text
               name: note
               label: 备注
-              placeholder: 旧链接合并到新文章
+              placeholder: 仅自己可见，例如：旧链接合并到新文章

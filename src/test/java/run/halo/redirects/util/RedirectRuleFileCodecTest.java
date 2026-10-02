@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import run.halo.redirects.config.RedirectSettings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class RedirectRuleFileCodecTest {
     @Test
@@ -23,19 +25,31 @@ class RedirectRuleFileCodecTest {
     }
 
     @Test
-    void shouldExportAndImportXlsx() {
+    void shouldRoundTripCsvIncludingGoneRules() {
         var rules = List.of(
             rule("/docs", "/knowledge", 301, "DIRECTORY"),
-            rule("/old-post", "/new-post", 302, "EXACT")
+            rule("/旧文章", "/新文章, 第二版", 308, "EXACT"),
+            rule("/deleted", null, 410, "EXACT")
         );
 
-        var exported = RedirectRuleFileCodec.exportRules(rules, "xlsx");
-        var imported = RedirectRuleFileCodec.importRules("redirects.xlsx", exported);
+        var exported = RedirectRuleFileCodec.exportRules(rules, "csv");
+        var imported = RedirectRuleFileCodec.importRules("redirects.csv", exported);
 
-        assertEquals(2, imported.size());
+        assertEquals(3, imported.size());
         assertEquals("/knowledge", imported.get(0).getToPath());
         assertEquals("DIRECTORY", imported.get(0).getMatchType());
-        assertEquals(302, imported.get(1).getStatusCode());
+        assertEquals("/新文章, 第二版", imported.get(1).getToPath());
+        assertEquals(308, imported.get(1).getStatusCode());
+        assertEquals(410, imported.get(2).getStatusCode());
+        assertNull(imported.get(2).getToPath());
+    }
+
+    @Test
+    void shouldRejectXlsx() {
+        assertThrows(IllegalArgumentException.class,
+            () -> RedirectRuleFileCodec.importRules("redirects.xlsx", new byte[0]));
+        assertThrows(IllegalArgumentException.class,
+            () -> RedirectRuleFileCodec.exportRules(List.of(), "xlsx"));
     }
 
     private RedirectSettings.RedirectRule rule(String from, String to, int statusCode,

@@ -1,9 +1,11 @@
 package run.halo.redirects;
 
+import java.net.URI;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.web.server.WebFilterChain;
@@ -111,6 +113,54 @@ class RedirectsWebFilterTest {
         filter.filter(exchange, chain).block();
 
         assertTrue(chainCalled.get());
+    }
+
+    @Test
+    void shouldNotRedirectPostRequests() {
+        RedirectRuleRegistry.reload(settings(List.of(rule("/old-post", "/new-post", 301))));
+
+        var filter = new RedirectsWebFilter();
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/old-post").build());
+        var chainCalled = new AtomicBoolean(false);
+        WebFilterChain chain = unused -> {
+            chainCalled.set(true);
+            return Mono.empty();
+        };
+
+        filter.filter(exchange, chain).block();
+
+        assertTrue(chainCalled.get());
+        assertNull(exchange.getResponse().getStatusCode());
+    }
+
+    @Test
+    void shouldAnswerGoneWithoutLocation() {
+        RedirectRuleRegistry.reload(settings(List.of(rule("/deleted", null, 410))));
+
+        var filter = new RedirectsWebFilter();
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.head("/deleted").build());
+        WebFilterChain chain = unused -> Mono.error(new AssertionError("chain should not be called"));
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(410, exchange.getResponse().getStatusCode().value());
+        assertFalse(exchange.getResponse().getHeaders().containsKey("Location"));
+    }
+
+    @Test
+    void shouldWriteEncodedLocationForChinesePath() {
+        RedirectRuleRegistry.reload(settings(List.of(rule("/旧文章", "/新文章", 301))));
+
+        var filter = new RedirectsWebFilter();
+        var exchange = MockServerWebExchange.from(
+            MockServerHttpRequest.method(HttpMethod.GET,
+                URI.create("/%E6%97%A7%E6%96%87%E7%AB%A0")).build());
+        WebFilterChain chain = unused -> Mono.error(new AssertionError("chain should not be called"));
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals("/%E6%96%B0%E6%96%87%E7%AB%A0",
+            exchange.getResponse().getHeaders().getFirst("Location"));
     }
 
     private RedirectSettings settings(List<RedirectSettings.RedirectRule> rules) {

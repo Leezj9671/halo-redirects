@@ -1,20 +1,17 @@
 package run.halo.redirects.util;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.apache.poi.ss.usermodel.DataFormatter;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import run.halo.redirects.config.RedirectSettings;
 
+/**
+ * Imports and exports redirect rules as CSV (UTF-8, optional BOM). Spreadsheet apps such as Excel
+ * and Numbers open and save this format directly, so no spreadsheet library is bundled.
+ */
 public final class RedirectRuleFileCodec {
     private static final List<String> HEADERS =
         List.of("fromPath", "toPath", "statusCode", "note", "matchType");
@@ -23,59 +20,27 @@ public final class RedirectRuleFileCodec {
     }
 
     public static List<RedirectSettings.RedirectRule> importRules(String filename, byte[] content) {
-        var format = detectFormat(filename);
-        if (format == FileFormat.XLSX) {
-            return parseXlsx(content);
-        }
-
+        checkCsvFilename(filename);
         return parseCsv(new String(content, StandardCharsets.UTF_8));
     }
 
     public static byte[] exportRules(List<RedirectSettings.RedirectRule> rules, String rawFormat) {
-        var format = parseFormat(rawFormat);
-        if (format == FileFormat.XLSX) {
-            return writeXlsx(rules);
-        }
-
-        return writeCsv(rules).getBytes(StandardCharsets.UTF_8);
+        normalizeExportFormat(rawFormat);
+        // The BOM makes Excel read the file as UTF-8 instead of the system code page.
+        return ("\ufeff" + writeCsv(rules)).getBytes(StandardCharsets.UTF_8);
     }
 
     public static String normalizeExportFormat(String rawFormat) {
-        return parseFormat(rawFormat).name().toLowerCase(Locale.ROOT);
+        if (!hasText(rawFormat) || "csv".equalsIgnoreCase(rawFormat.trim())) {
+            return "csv";
+        }
+        throw new IllegalArgumentException("Unsupported export format: " + rawFormat
+            + ". Only csv is supported; spreadsheet apps can open and save csv files.");
     }
 
     private static List<RedirectSettings.RedirectRule> parseCsv(String rawContent) {
         var rows = parseCsvRows(stripBom(rawContent));
         return toRules(rows);
-    }
-
-    private static List<RedirectSettings.RedirectRule> parseXlsx(byte[] content) {
-        try (var inputStream = new ByteArrayInputStream(content);
-             var workbook = WorkbookFactory.create(inputStream)) {
-            var rows = new ArrayList<List<String>>();
-            var formatter = new DataFormatter();
-            var sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
-            if (sheet == null) {
-                return List.of();
-            }
-
-            for (Row row : sheet) {
-                if (row == null) {
-                    continue;
-                }
-
-                var values = new ArrayList<String>(HEADERS.size());
-                for (var index = 0; index < HEADERS.size(); index++) {
-                    var cell = row.getCell(index, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
-                    values.add(cell == null ? "" : formatter.formatCellValue(cell));
-                }
-                rows.add(values);
-            }
-
-            return toRules(rows);
-        } catch (Exception ex) {
-            throw new IllegalArgumentException("Unable to read xlsx file", ex);
-        }
     }
 
     private static String writeCsv(List<RedirectSettings.RedirectRule> rules) {
@@ -86,40 +51,13 @@ public final class RedirectRuleFileCodec {
             lines.add(String.join(",",
                 csvCell(rule.getFromPath()),
                 csvCell(rule.getToPath()),
-                csvCell(String.valueOf(normalizeStatusCode(rule.getStatusCode()))),
+                csvCell(String.valueOf(RedirectRuleSupport.normalizeStatusCode(rule.getStatusCode()))),
                 csvCell(nullToEmpty(rule.getNote())),
                 csvCell(RedirectRuleSupport.normalizeMatchType(rule.getMatchType()))
             ));
         }
 
         return String.join(System.lineSeparator(), lines);
-    }
-
-    private static byte[] writeXlsx(List<RedirectSettings.RedirectRule> rules) {
-        try (var workbook = new XSSFWorkbook();
-             var outputStream = new ByteArrayOutputStream()) {
-            var sheet = workbook.createSheet("redirects");
-
-            var headerRow = sheet.createRow(0);
-            for (var index = 0; index < HEADERS.size(); index++) {
-                headerRow.createCell(index).setCellValue(HEADERS.get(index));
-            }
-
-            for (var rowIndex = 0; rowIndex < rules.size(); rowIndex++) {
-                var rule = rules.get(rowIndex);
-                var row = sheet.createRow(rowIndex + 1);
-                row.createCell(0).setCellValue(nullToEmpty(rule.getFromPath()));
-                row.createCell(1).setCellValue(nullToEmpty(rule.getToPath()));
-                row.createCell(2).setCellValue(String.valueOf(normalizeStatusCode(rule.getStatusCode())));
-                row.createCell(3).setCellValue(nullToEmpty(rule.getNote()));
-                row.createCell(4).setCellValue(RedirectRuleSupport.normalizeMatchType(rule.getMatchType()));
-            }
-
-            workbook.write(outputStream);
-            return outputStream.toByteArray();
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("Unable to create xlsx file", ex);
-        }
     }
 
     private static List<RedirectSettings.RedirectRule> toRules(List<List<String>> rows) {
@@ -161,18 +99,16 @@ public final class RedirectRuleFileCodec {
         var fromPath = readValue(row, headerMap, "fromPath", 0);
         var toPath = readValue(row, headerMap, "toPath", 1);
 
-        if (!hasText(fromPath) && !hasText(toPath)) {
-            return null;
-        }
-
-        if (!hasText(fromPath) || !hasText(toPath)) {
+        var statusCode = RedirectRuleSupport.parseStatusCode(
+            readValue(row, headerMap, "statusCode", 2));
+        if (!hasText(fromPath) || (!hasText(toPath) && !RedirectRuleSupport.isGone(statusCode))) {
             return null;
         }
 
         var rule = new RedirectSettings.RedirectRule();
         rule.setFromPath(fromPath.trim());
-        rule.setToPath(toPath.trim());
-        rule.setStatusCode(parseStatusCode(readValue(row, headerMap, "statusCode", 2)));
+        rule.setToPath(hasText(toPath) ? toPath.trim() : null);
+        rule.setStatusCode(statusCode);
 
         var note = readValue(row, headerMap, "note", 3);
         if (hasText(note)) {
@@ -280,45 +216,14 @@ public final class RedirectRuleFileCodec {
         return escaped;
     }
 
-    private static Integer parseStatusCode(String rawStatusCode) {
-        if (!hasText(rawStatusCode)) {
-            return 301;
-        }
-
-        return "302".equals(rawStatusCode.trim()) ? 302 : 301;
-    }
-
-    private static int normalizeStatusCode(Integer statusCode) {
-        return statusCode != null && statusCode == 302 ? 302 : 301;
-    }
-
-    private static FileFormat detectFormat(String filename) {
+    private static void checkCsvFilename(String filename) {
         if (!hasText(filename)) {
             throw new IllegalArgumentException("File name is required");
         }
-
-        var normalized = filename.trim().toLowerCase(Locale.ROOT);
-        if (normalized.endsWith(".xlsx")) {
-            return FileFormat.XLSX;
+        if (!filename.trim().toLowerCase(Locale.ROOT).endsWith(".csv")) {
+            throw new IllegalArgumentException(
+                "Only .csv files are supported; save the spreadsheet as CSV (UTF-8) first");
         }
-
-        if (normalized.endsWith(".csv")) {
-            return FileFormat.CSV;
-        }
-
-        throw new IllegalArgumentException("Only .csv and .xlsx files are supported");
-    }
-
-    private static FileFormat parseFormat(String rawFormat) {
-        if (!hasText(rawFormat)) {
-            return FileFormat.CSV;
-        }
-
-        return switch (rawFormat.trim().toLowerCase(Locale.ROOT)) {
-            case "csv" -> FileFormat.CSV;
-            case "xlsx" -> FileFormat.XLSX;
-            default -> throw new IllegalArgumentException("Unsupported export format: " + rawFormat);
-        };
     }
 
     private static String stripBom(String value) {
@@ -335,10 +240,5 @@ public final class RedirectRuleFileCodec {
 
     private static boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
-    }
-
-    private enum FileFormat {
-        CSV,
-        XLSX
     }
 }

@@ -15,9 +15,12 @@
 - 支持批量粘贴导入（多行文本）
 - 支持目录级重定向（保留子路径）
 - 支持站内路径和外部 URL
-- 支持 301 / 302
+- 支持 301 / 302 / 307 / 308，以及 410（内容已删除，不跳转）
+- 支持中文等非 ASCII 路径（来源路径可直接写中文或百分号编码，跳转地址自动编码）
+- 只重定向 GET / HEAD 请求，表单提交等不受影响
+- 自动跳过会形成循环（或超过 20 跳）的规则，并在日志中给出 WARN
 - 可选保留原请求的查询参数
-- 支持通过 Console API 导入 / 导出 CSV、XLSX
+- 支持通过 Console API 导入 / 导出 CSV（UTF-8，Excel 可直接打开和另存为 CSV）
 - 规则变更后自动重新加载，无需重启 Halo
 
 本地构建（不依赖宿主机 JDK）：
@@ -43,7 +46,7 @@
 
 ```bash
 ./scripts/build-in-docker.sh
-./scripts/e2e-test.sh halohub/halo:2.26.1 build/libs/redirects-0.1.7.jar
+./scripts/e2e-test.sh halohub/halo:2.26.1 build/libs/redirects-0.2.0.jar
 ```
 
 默认地址：
@@ -53,6 +56,9 @@
 兼容性说明：
 
 - 已本地实测通过：Halo `2.19.3`、`2.21.10`、`2.22.14`、`2.25.4`、`2.26.1`
+- `0.2.0` 已用 e2e 脚本实测：Halo `2.19.3`、`2.22.14`、`2.26.1`、`2.27.0-beta.1`；设置页已在 `2.19.3` 和 `2.26.1` 中实际打开、保存验证
+- 设置页仍使用 `repeater`：更紧凑的 `array` 输入在 Halo `2.22` 才加入，`2.19`–`2.21` 不支持；若以后最低版本提到 `2.22`，可以改用它
+- `0.2.0` 移除了 XLSX 导入导出：插件 jar 从未打包 Apache POI，在 Halo 中调用会抛 `NoClassDefFoundError`，请求一直挂起
 - 自 `0.1.7` 起，插件不再依赖 `SettingFetcher`（Halo 2.23 起由类改为接口）和 `PluginConfigUpdatedEvent` 的配置载荷（Halo 2.25 起改为 Jackson 3 节点），统一直接读写插件自己的 ConfigMap，同一个 jar 兼容以上所有版本
 - 插件 `requires` 已调整为 `>=2.19.3`
 - 之所以不直接标成 `>=2.19.0`，是因为当前只实际验证到了 `2.19.3`
@@ -65,10 +71,13 @@
 /old-post,/new-post,301,optional note
 /docs -> /knowledge -> 301 -> DIRECTORY
 /guides,/docs,301,,DIRECTORY
+/deleted-post -> 410
+/old-page,,410,已下线
 ```
 
 - 每行一条
-- 不写状态码时默认 `301`
+- 不写状态码时默认 `301`；支持 `301` / `302` / `307` / `308` / `410`，无法识别的状态码按 `301` 处理
+- 状态码为 `410` 时目标地址留空
 - 支持 `->`、`=>` 和逗号分隔
 - 第 4 列可写备注，第 5 列可写匹配方式（`EXACT` / `DIRECTORY`）
 - 以 `#` 开头的行会忽略
