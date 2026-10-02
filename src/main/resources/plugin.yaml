@@ -2,6 +2,8 @@ apiVersion: plugin.halo.run/v1alpha1
 kind: Plugin
 metadata:
   name: redirects
+  annotations:
+    store.halo.run/app-id: app-qjw66wdx
 spec:
   enabled: true
   version: "0.1.7"

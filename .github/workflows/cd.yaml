@@ -8,8 +8,10 @@ jobs:
   cd:
     permissions:
       contents: write
-    uses: halo-sigs/reusable-workflows/.github/workflows/plugin-cd.yaml@v3
+    uses: halo-sigs/reusable-workflows/.github/workflows/plugin-cd.yaml@v5
+    secrets:
+      halo-pat: ${{ secrets.HALO_PAT }}
     with:
+      app-id: app-qjw66wdx
       java-version: 21
       skip-node-setup: true
-      skip-appstore-release: true
