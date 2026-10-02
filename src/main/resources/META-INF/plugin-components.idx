@@ -4,3 +4,6 @@ run.halo.redirects.RedirectsWebFilter
 run.halo.redirects.endpoint.RedirectRuleConsoleEndpoint
 run.halo.redirects.listener.RedirectSettingsUpdatedListener
 run.halo.redirects.config.RedirectSettingsLoader
+run.halo.redirects.service.RedirectRuleService
+run.halo.redirects.service.RedirectRuleReloader
+run.halo.redirects.service.RedirectRuleReconciler

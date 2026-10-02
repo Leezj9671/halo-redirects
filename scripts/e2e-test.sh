@@ -108,12 +108,55 @@ check "POST import csv" 200 \
   "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" -F "file=@${TMPDIR:-/tmp}/redirects-e2e.csv" "$BASE/apis/console.api.redirects.halo.run/v1alpha1/plugins/redirects/rules/import?mode=append")"
 check "imported rule active" "302 $BASE/target" "$(status /imported)"
 
-# 4) disable via config -> no redirect
+# 4) rules tab API (RedirectRule extensions)
+RAPI=$BASE/apis/console.api.redirects.halo.run/v1alpha1/plugins/redirects
+json() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
+check "legacy rules moved out of settings" "[]" \
+  "$(curl -s -u "$AUTH" "$BASE/api/v1alpha1/configmaps/redirects-config" | python3 -c 'import json,sys; b=json.loads(json.load(sys.stdin)["data"]["basic"]); print(b.get("rules") or [])')"
+check "moved rules listed" True \
+  "$(curl -s -u "$AUTH" "$RAPI/rules" | json '"/archives/旧文章" in [i["fromPath"] for i in d["items"]]')"
+check "looping rules flagged" 2 \
+  "$(curl -s -u "$AUTH" "$RAPI/rules" | json 'sum(1 for i in d["items"] if i["skippedForLoop"])')"
+created=$(curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$RAPI/rules" \
+  -d '{"fromPath":"/api-old","toPath":"/api-new","statusCode":301,"matchType":"EXACT"}')
+rule_name=$(echo "$created" | json 'd["name"]')
+check "create rule active" "301 $BASE/api-new" "$(status /api-old)"
+check "duplicate source rejected" 409 "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" -X POST \
+  -H 'Content-Type: application/json' "$RAPI/rules" -d '{"fromPath":"/api-old/","toPath":"/x"}')"
+check "missing target rejected" 400 "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" -X POST \
+  -H 'Content-Type: application/json' "$RAPI/rules" -d '{"fromPath":"/no-target","statusCode":301}')"
+curl -s -u "$AUTH" -o /dev/null -X PUT -H 'Content-Type: application/json' "$RAPI/rules/$rule_name" \
+  -d '{"fromPath":"/api-old","toPath":"/api-newer","statusCode":302,"matchType":"EXACT"}'
+check "update rule active" "302 $BASE/api-newer" "$(status /api-old)"
+curl -s -u "$AUTH" -o /dev/null -X PUT -H 'Content-Type: application/json' "$RAPI/rules/$rule_name" \
+  -d '{"fromPath":"/api-old","toPath":"/api-newer","statusCode":302,"enabled":false}'
+check "disabled rule inactive" 404 "$(status /api-old | cut -d' ' -f1)"
+check "bulk add" 2 "$(curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$RAPI/rules/-/bulk" \
+  -d '{"text":"/bulk-a -> /bulk-b\n/bulk-gone -> 410\n# comment"}' | json 'd["createdCount"]')"
+check "bulk rule active" "301 $BASE/bulk-b" "$(status /bulk-a)"
+check "test url chain" "301 /bulk-b?x=1" "$(curl -s -u "$AUTH" -G "$RAPI/rules/-/test" --data-urlencode 'url=/bulk-a?x=1' \
+  | json 'str(d["hops"][0]["statusCode"])+" "+d["hops"][0]["location"]')"
+check "test url miss" False "$(curl -s -u "$AUTH" -G "$RAPI/rules/-/test" --data-urlencode 'url=/nothing-here' | json 'd["matched"]')"
+check "test url chinese" "/archives/%E6%96%B0%E6%96%87%E7%AB%A0" "$(curl -s -u "$AUTH" -G "$RAPI/rules/-/test" \
+  --data-urlencode 'url=http://example.com/archives/旧文章' | json 'd["hops"][0]["location"]')"
+# writes through Halo's generic extension API are picked up by the reconciler
+curl -s -u "$AUTH" -o /dev/null -X POST -H 'Content-Type: application/json' \
+  "$BASE/apis/redirects.halo.run/v1alpha1/redirectrules" \
+  -d '{"apiVersion":"redirects.halo.run/v1alpha1","kind":"RedirectRule","metadata":{"name":"generic-api-rule"},"spec":{"fromPath":"/generic-old","toPath":"/generic-new","statusCode":301,"matchType":"EXACT"}}'
+sleep 2
+check "generic api rule active" "301 $BASE/generic-new" "$(status /generic-old)"
+curl -s -u "$AUTH" -o /dev/null -X DELETE "$BASE/apis/redirects.halo.run/v1alpha1/redirectrules/generic-api-rule"
+sleep 2
+check "generic api delete applied" 404 "$(status /generic-old | cut -d' ' -f1)"
+check "delete rule" 204 "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" -X DELETE "$RAPI/rules/$rule_name")"
+check "console bundle served" 200 "$(curl -s -u "$AUTH" -o /dev/null -w "%{http_code}" "$BASE/plugins/redirects/assets/console/main.js")"
+
+# 5) disable via config -> no redirect
 put_config '{"enabled":false,"preserveQueryString":true,"rules":[{"fromPath":"/old-post","toPath":"/new-post","statusCode":301,"matchType":"EXACT"}]}' >/dev/null
 sleep 3
 check "disabled => no redirect" 404 "$(status /old-post | cut -d' ' -f1)"
 
-# 5) restart -> rules loaded on startup
+# 6) restart -> rules loaded on startup
 put_config '{"enabled":true,"preserveQueryString":false,"rules":[{"fromPath":"/after-restart","toPath":"/ok","statusCode":301,"matchType":"EXACT"}]}' >/dev/null
 docker restart "$NAME" >/dev/null; wait_ready
 for _ in $(seq 1 20); do [[ "$(status /after-restart)" == 301* ]] && break; sleep 2; done

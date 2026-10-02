@@ -42,6 +42,9 @@ public final class RedirectRuleRegistry {
         var directoryRules = new LinkedHashMap<String, Rule>();
 
         for (var sourceRule : RedirectRuleSupport.collectRules(settings)) {
+            if (Boolean.FALSE.equals(sourceRule.getEnabled())) {
+                continue;
+            }
             var rule = compile(sourceRule);
             if (rule == null) {
                 continue;
@@ -58,7 +61,9 @@ public final class RedirectRuleRegistry {
                 + "than {} hops: {}", loopingRules.size(), MAX_HOPS, loopingRules.stream()
                 .map(rule -> rule.sourcePath() + " -> " + rule.target())
                 .collect(Collectors.joining(", ")));
-            snapshot = snapshot.without(loopingRules);
+            snapshot = snapshot.without(loopingRules).withSkipped(loopingRules.stream()
+                .map(rule -> new SkippedRule(rule.name(), rule.sourcePath(), rule.target()))
+                .toList());
         }
 
         SNAPSHOT.set(snapshot);
@@ -92,6 +97,30 @@ public final class RedirectRuleRegistry {
         });
     }
 
+    /**
+     * Like {@link #resolve} but also tells which rule matched, for the "test URL" tool.
+     */
+    public static Optional<Explanation> explain(String requestPath, String rawQuery) {
+        var normalizedPath = PathNormalizer.normalizePath(requestPath);
+        if (!hasText(normalizedPath)) {
+            return Optional.empty();
+        }
+        var snapshot = SNAPSHOT.get();
+        return match(snapshot, normalizedPath).map(match -> {
+            var rule = match.rule();
+            var resolved = resolve(requestPath, rawQuery).orElseThrow();
+            return new Explanation(rule.name(), rule.sourcePath(), rule.directory(),
+                resolved.statusCode(), resolved.location());
+        });
+    }
+
+    /**
+     * Rules left out of the last reload because they form a loop or an overlong chain.
+     */
+    public static List<SkippedRule> skippedRules() {
+        return SNAPSHOT.get().skipped();
+    }
+
     public static boolean isEnabled() {
         return SNAPSHOT.get().enabled();
     }
@@ -110,14 +139,14 @@ public final class RedirectRuleRegistry {
         var statusCode = RedirectRuleSupport.normalizeStatusCode(rule.getStatusCode());
         var directory = RedirectRuleSupport.isDirectoryMatch(rule);
         if (RedirectRuleSupport.isGone(statusCode)) {
-            return new Rule(sourcePath, null, statusCode, directory);
+            return new Rule(rule.getName(), sourcePath, null, statusCode, directory);
         }
 
         var target = PathNormalizer.normalizeTarget(rule.getToPath());
         if (!hasText(target) || isSelfRedirect(sourcePath, target)) {
             return null;
         }
-        return new Rule(sourcePath, target, statusCode, directory);
+        return new Rule(rule.getName(), sourcePath, target, statusCode, directory);
     }
 
     private static boolean isSelfRedirect(String sourcePath, String target) {
@@ -259,9 +288,9 @@ public final class RedirectRuleRegistry {
     }
 
     private record Snapshot(Map<String, Rule> exactRules, List<Rule> directoryRules,
-                            boolean preserveQueryString) {
+                            boolean preserveQueryString, List<SkippedRule> skipped) {
         private static Snapshot disabled() {
-            return new Snapshot(Map.of(), List.of(), false);
+            return new Snapshot(Map.of(), List.of(), false, List.of());
         }
 
         private static Snapshot of(Iterable<Rule> exactRules, Iterable<Rule> directoryRules,
@@ -272,7 +301,8 @@ public final class RedirectRuleRegistry {
             directoryRules.forEach(directories::add);
             directories.sort(Comparator.comparingInt((Rule rule) -> rule.sourcePath().length())
                 .reversed());
-            return new Snapshot(Map.copyOf(exact), List.copyOf(directories), preserveQueryString);
+            return new Snapshot(Map.copyOf(exact), List.copyOf(directories), preserveQueryString,
+                List.of());
         }
 
         private Snapshot without(Set<Rule> rules) {
@@ -280,6 +310,11 @@ public final class RedirectRuleRegistry {
                 exactRules.values().stream().filter(rule -> !rules.contains(rule)).toList(),
                 directoryRules.stream().filter(rule -> !rules.contains(rule)).toList(),
                 preserveQueryString);
+        }
+
+        private Snapshot withSkipped(List<SkippedRule> skippedRules) {
+            return new Snapshot(exactRules, directoryRules, preserveQueryString,
+                List.copyOf(skippedRules));
         }
 
         private List<Rule> allRules() {
@@ -293,13 +328,27 @@ public final class RedirectRuleRegistry {
         }
     }
 
-    private record Rule(String sourcePath, String target, int statusCode, boolean directory) {
+    private record Rule(String name, String sourcePath, String target, int statusCode,
+                        boolean directory) {
         private boolean isGone() {
             return RedirectRuleSupport.isGone(statusCode);
         }
     }
 
     private record Match(Rule rule, String location) {
+    }
+
+    /**
+     * A rule left out because following it loops or exceeds the hop limit.
+     */
+    public record SkippedRule(String name, String fromPath, String toPath) {
+    }
+
+    /**
+     * Which rule answered a path; {@code ruleName} is null for rules without an extension.
+     */
+    public record Explanation(String ruleName, String sourcePath, boolean directory,
+                              int statusCode, String location) {
     }
 
     /**

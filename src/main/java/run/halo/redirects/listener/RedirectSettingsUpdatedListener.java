@@ -7,8 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 import run.halo.app.plugin.PluginConfigUpdatedEvent;
-import run.halo.redirects.config.RedirectSettingsLoader;
-import run.halo.redirects.manager.RedirectRuleRegistry;
+import run.halo.redirects.service.RedirectRuleReloader;
 
 @Component
 public class RedirectSettingsUpdatedListener
@@ -17,10 +16,10 @@ public class RedirectSettingsUpdatedListener
         LoggerFactory.getLogger(RedirectSettingsUpdatedListener.class);
     private static final String PLUGIN_NAME = "redirects";
 
-    private final RedirectSettingsLoader settingsLoader;
+    private final RedirectRuleReloader reloader;
 
-    public RedirectSettingsUpdatedListener(RedirectSettingsLoader settingsLoader) {
-        this.settingsLoader = settingsLoader;
+    public RedirectSettingsUpdatedListener(RedirectRuleReloader reloader) {
+        this.reloader = reloader;
     }
 
     /**
@@ -45,16 +44,7 @@ public class RedirectSettingsUpdatedListener
     }
 
     Mono<Void> reload(String trigger) {
-        return settingsLoader.load()
-            .doOnNext(settings -> {
-                RedirectRuleRegistry.reload(settings);
-                log.info("[redirects] {}: loaded {} active redirect rule(s)", trigger,
-                    RedirectRuleRegistry.size());
-            })
-            .doOnError(ex -> log.warn("[redirects] {}: failed to reload redirect settings, "
-                + "keeping previous rules", trigger, ex))
-            .onErrorResume(ex -> Mono.empty())
-            .then();
+        return reloader.reloadNow(trigger).onErrorResume(ex -> Mono.empty());
     }
 
     /**

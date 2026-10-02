@@ -9,11 +9,33 @@ public class RedirectSettings {
     private List<RedirectRule> rules;
 
     public static class RedirectRule {
+        /**
+         * Name of the backing {@code RedirectRule} extension; null for rules that only exist in
+         * legacy settings or in an import file.
+         */
+        private String name;
+        private Boolean enabled;
         private String fromPath;
         private String toPath;
         private Integer statusCode;
         private String note;
         private String matchType;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public Boolean getEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(Boolean enabled) {
+            this.enabled = enabled;
+        }
 
         public String getFromPath() {
             return fromPath;

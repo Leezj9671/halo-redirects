@@ -22,7 +22,6 @@ import run.halo.app.extension.ReactiveExtensionClient;
 public class RedirectSettingsLoader {
     public static final String CONFIG_MAP_NAME = "redirects-config";
     public static final String SETTINGS_GROUP = "basic";
-
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -58,6 +57,27 @@ public class RedirectSettingsLoader {
                 configMap.setData(data);
                 return client.update(configMap);
             });
+    }
+
+    /**
+     * Emits the raw config map, or empty when the plugin has none yet.
+     */
+    public Mono<ConfigMap> fetchConfigMap() {
+        return client.fetch(ConfigMap.class, CONFIG_MAP_NAME);
+    }
+
+    /**
+     * Saves the settings with their pre-0.3.0 rules removed (they now live in extensions).
+     */
+    public Mono<ConfigMap> saveWithoutLegacyRules(ConfigMap configMap, RedirectSettings settings) {
+        settings.setRules(null);
+        settings.setBulkRules(null);
+        var data = configMap.getData() == null
+            ? new LinkedHashMap<String, String>()
+            : new LinkedHashMap<>(configMap.getData());
+        data.put(SETTINGS_GROUP, write(settings));
+        configMap.setData(data);
+        return client.update(configMap);
     }
 
     public static RedirectSettings parse(String json) {
