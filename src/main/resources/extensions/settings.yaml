@@ -58,24 +58,32 @@ spec:
                 style: "max-width: none; min-width: 0; overflow-x: auto;"
             # Rows keep a minimum width and the fieldset scrolls instead, so narrow screens never
             # squeeze the fields over the delete button.
+            # Fields take the row, the delete button gets a fixed narrow column (Halo's default is
+            # 1/12 of the row, which grows huge on wide screens).
             item:
               attrs:
-                style: "min-width: 800px;"
+                style: "min-width: 800px; grid-template-columns: minmax(0, 1fr) 40px;"
+            content:
+              attrs:
+                style: "grid-column: 1 / 2;"
+            controls:
+              attrs:
+                style: "grid-column: 2 / 3;"
             help:
               attrs:
                 style: "display: block; width: 100%;"
               children:
                 - $el: div
                   children: 目标支持站内路径或完整 URL；目录匹配会带上子路径（/docs/a -> /knowledge/a）；307/308 会保留请求方法；410 表示已删除，目标留空。
-                # Mirrors a repeater row (12-column grid: 11 for the fields, 1 for the controls) so
-                # the header stays aligned at any width.
+                # Mirrors a repeater row (fields + 40px delete column) so the header stays aligned
+                # at any width.
                 - $el: div
                   attrs:
-                    style: "display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); min-width: 800px; margin: 12px -8px 0; border: 1px solid transparent; font-size: 12px; font-weight: 500; color: #374151;"
+                    style: "display: grid; grid-template-columns: minmax(0, 1fr) 40px; min-width: 800px; margin: 12px -8px 0; border: 1px solid transparent; font-size: 12px; font-weight: 500; color: #374151;"
                   children:
                     - $el: div
                       attrs:
-                        style: "grid-column: span 11 / span 11; padding: 0 8px;"
+                        style: "grid-column: 1 / 2; padding: 0 8px;"
                       children:
                         - $el: div
                           attrs:
