@@ -42,48 +42,111 @@ spec:
             /deleted-post -> 410
             # 也可用逗号：来源,目标,状态码,备注,匹配方式
             /campaign,/landing,302,活动页
+        # One rule per row with a column header. Plain elements with inline styles render on every
+        # supported Halo version, unlike the compact "array" input (Halo 2.22+).
         - $formkit: repeater
           name: rules
           label: 重定向规则
-          help: 目录匹配会把子路径一并带到目标，例如 /docs/a -> /knowledge/a。目标支持站内路径或完整 URL。
+          help: 重定向规则说明
           addLabel: 添加规则
+          upControl: false
+          downControl: false
+          insertControl: false
+          sectionsSchema:
+            fieldset:
+              attrs:
+                style: "max-width: none; min-width: 0; overflow-x: auto;"
+            # Rows keep a minimum width and the fieldset scrolls instead, so narrow screens never
+            # squeeze the fields over the delete button.
+            item:
+              attrs:
+                style: "min-width: 800px;"
+            help:
+              attrs:
+                style: "display: block; width: 100%;"
+              children:
+                - $el: div
+                  children: 目标支持站内路径或完整 URL；目录匹配会带上子路径（/docs/a -> /knowledge/a）；307/308 会保留请求方法；410 表示已删除，目标留空。
+                # Mirrors a repeater row (12-column grid: 11 for the fields, 1 for the controls) so
+                # the header stays aligned at any width.
+                - $el: div
+                  attrs:
+                    style: "display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); min-width: 800px; margin: 12px -8px 0; border: 1px solid transparent; font-size: 12px; font-weight: 500; color: #374151;"
+                  children:
+                    - $el: div
+                      attrs:
+                        style: "grid-column: span 11 / span 11; padding: 0 8px;"
+                      children:
+                        - $el: div
+                          attrs:
+                            style: "display: grid; grid-template-columns: minmax(150px, 3fr) minmax(150px, 3fr) minmax(120px, 2fr) minmax(120px, 2fr) minmax(100px, 2fr); column-gap: 8px;"
+                          children:
+                            - $el: span
+                              children: 来源路径 *
+                            - $el: span
+                              children: 目标地址
+                            - $el: span
+                              children: 匹配方式
+                            - $el: span
+                              children: 状态码
+                            - $el: span
+                              children: 备注
           value: []
           children:
-            - $formkit: text
-              name: fromPath
-              label: 来源路径
-              validation: required
-              placeholder: /old-post
-            - $formkit: text
-              name: toPath
-              label: 目标地址
-              help: 状态码为 410 时留空
-              placeholder: /new-post 或 https://example.com/page
-            - $formkit: select
-              name: matchType
-              label: 匹配方式
-              value: EXACT
-              options:
-                - label: 精确匹配
+            - $el: div
+              attrs:
+                style: "display: grid; grid-template-columns: minmax(150px, 3fr) minmax(150px, 3fr) minmax(120px, 2fr) minmax(120px, 2fr) minmax(100px, 2fr); column-gap: 8px; align-items: center;"
+              children:
+                - $formkit: text
+                  name: fromPath
+                  sectionsSchema:
+                    outer:
+                      attrs:
+                        style: "padding: 0; border: 0; margin: 0;"
+                  validation: required
+                  validation-label: 来源路径
+                  placeholder: /old-post
+                - $formkit: text
+                  name: toPath
+                  sectionsSchema:
+                    outer:
+                      attrs:
+                        style: "padding: 0; border: 0; margin: 0;"
+                  placeholder: /new-post
+                - $formkit: select
+                  name: matchType
+                  sectionsSchema:
+                    outer:
+                      attrs:
+                        style: "padding: 0; border: 0; margin: 0;"
                   value: EXACT
-                - label: 目录匹配（保留子路径）
-                  value: DIRECTORY
-            - $formkit: select
-              name: statusCode
-              label: 状态码
-              value: 301
-              options:
-                - label: 301 永久重定向
+                  options:
+                    - label: 精确匹配
+                      value: EXACT
+                    - label: 目录匹配
+                      value: DIRECTORY
+                - $formkit: select
+                  name: statusCode
+                  sectionsSchema:
+                    outer:
+                      attrs:
+                        style: "padding: 0; border: 0; margin: 0;"
                   value: 301
-                - label: 302 临时重定向
-                  value: 302
-                - label: 307 临时重定向（保留请求方法）
-                  value: 307
-                - label: 308 永久重定向（保留请求方法）
-                  value: 308
-                - label: 410 已删除（不跳转）
-                  value: 410
-            - $formkit: text
-              name: note
-              label: 备注
-              placeholder: 仅自己可见，例如：旧链接合并到新文章
+                  options:
+                    - label: 301 永久
+                      value: 301
+                    - label: 302 临时
+                      value: 302
+                    - label: 307 临时
+                      value: 307
+                    - label: 308 永久
+                      value: 308
+                    - label: 410 已删除
+                      value: 410
+                - $formkit: text
+                  name: note
+                  sectionsSchema:
+                    outer:
+                      attrs:
+                        style: "padding: 0; border: 0; margin: 0;"
+                  placeholder: 可选
